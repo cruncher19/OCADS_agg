@@ -1,3 +1,23 @@
+# Usage
+
+1. Create the python environment: `virtualenv ocads_agg`
+2. Activate the environment: `source ocads_agg/bin/activate`
+3. Install the dependencies: `pip install -r requirements.txt`
+4. Run the project: `python ocads_agg.py -h`
+
+```
+usage: OCADS_agg [-h] [-o OUTPUT_DIR] [-t NUM_THREADS]
+
+options:
+  -h, --help            show this help message and exit
+  -o, --output_dir OUTPUT_DIR
+                        A directory to store the aggregated OCADS data in. If no directory is provided the current working directory will be used.
+  -t, --num_threads NUM_THREADS
+                        The number of threads to be used in aggregating data
+```
+
+# How it works
+
 This is a lightweight python utility designed to aggregate data from the OCADS data portal(https://www.ncei.noaa.gov/products/ocean-carbon-acidification-data-system)
 
 An up-to-date index of the contents of the OCADS data portal is available in JSON form at this url: https://www.ncei.noaa.gov/data/oceans/ncei/ocads/ocads_metadata.json
@@ -26,20 +46,3 @@ As you can see from the JSON object, the accession_number for this dataset is `0
 
 https://www.ncei.noaa.gov/data/oceans/ncei/ocads/data/0000071
 
-# Usage
-
-1. Create the python environment: `virtualenv ocads_agg`
-2. Activate the environment: `source ocads_agg/bin/activate`
-3. Install the dependencies: `pip install -r requirements.txt`
-4. Run the project: `python ocads_agg.py -h`
-
-```
-usage: OCADS_agg [-h] [-o OUTPUT_DIR] [-t NUM_THREADS]
-
-options:
-  -h, --help            show this help message and exit
-  -o, --output_dir OUTPUT_DIR
-                        A directory to store the aggregated OCADS data in. If no directory is provided the current working directory will be used.
-  -t, --num_threads NUM_THREADS
-                        The number of threads to be used in aggregating data
-```
