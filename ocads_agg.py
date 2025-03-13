@@ -80,7 +80,8 @@ def create_dataset_folders(output_dir, metadata_index_entry):
     return metadata_path, data_path
 
 def download_metadata(output_dir, metadata_index_entry):
-    download_file(metadata_index_entry['lonlat_url'], output_dir)
+    if 'lonlat_url' in metadata_index_entry:
+        download_file(metadata_index_entry['lonlat_url'], output_dir)
     download_file(metadata_index_entry['xml_url_iso-19115-2'], output_dir)
     download_file(metadata_index_entry['xml_url_ocads'], output_dir)
 
