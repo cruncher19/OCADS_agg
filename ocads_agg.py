@@ -39,6 +39,14 @@ def download_file(url, output_dir):
         return filename
     else:
         return None
+    
+def check_file(url, output_dir):
+    if url.find('/'):
+        filename = url.rsplit('/', 1)[1]
+        filename = os.path.join(output_dir, filename)
+        return os.path.isfile(filename)
+    else:
+        raise Exception("No filename in URL. Whoops")
 
 def fetch_latest_json(output_dir):
     """
@@ -70,10 +78,14 @@ def dataset_folder_exists(output_dir, metadata_index_entry):
     dataset_path = os.path.join(output_dir, accession_number)
     return os.path.isdir(dataset_path)
 
-def create_dataset_folders(output_dir, metadata_index_entry):
+def get_dataset_folder_paths(metadata_index_entry, output_dir):
     accession_number = metadata_index_entry['accession_number']
     metadata_path = os.path.join(output_dir, accession_number, "metadata")
     data_path = os.path.join(output_dir, accession_number, "data")
+    return metadata_path, data_path
+
+def create_dataset_folders(metadata_index_entry, output_dir):
+    metadata_path, data_path = get_dataset_folder_paths(metadata_index_entry, output_dir)
 
     Path(metadata_path).mkdir(parents=True, exist_ok=True)
     Path(data_path).mkdir(parents=True, exist_ok=True)
@@ -84,6 +96,14 @@ def download_metadata(output_dir, metadata_index_entry):
         download_file(metadata_index_entry['lonlat_url'], output_dir)
     download_file(metadata_index_entry['xml_url_iso-19115-2'], output_dir)
     download_file(metadata_index_entry['xml_url_ocads'], output_dir)
+
+def check_metadata(output_dir, metadata_index_entry):
+    result = True
+    if 'lonlat_url' in metadata_index_entry:
+        result *= check_file(metadata_index_entry['lonlat_url'], output_dir)
+    result *= check_file(metadata_index_entry['xml_url_iso-19115-2'], output_dir)
+    result *= check_file(metadata_index_entry['xml_url_ocads'], output_dir)
+    return bool(result)
 
 def download_webdirectory_contents(output_dir, url):
     webdir_page = requests.get(url).text
@@ -106,6 +126,26 @@ def download_webdirectory_contents(output_dir, url):
                 raise Exception("Download failed for %s" % link)
     return files
 
+def check_webdirectory_contents(output_dir, url):
+    webdir_page = requests.get(url).text
+    soup = BeautifulSoup(webdir_page, "html.parser")
+    links = [urljoin(url + "/", node.get('href')) for node in soup.find_all('a')[5:]]
+
+    result = True
+    for link in links:
+        if link[-1] == "/":
+            # if we found a subdirectory rather than a file
+            subdir_path = os.path.join(output_dir, link.split("/")[-2])
+            if os.path.isdir(subdir_path):
+                result *= check_webdirectory_contents(subdir_path, link)
+            else:
+                return False
+        else:
+            # Otherwise do file stuff
+            result *= check_file(link, output_dir)
+    return bool(result)
+
+
 def load_state():
     path = Path(__file__).with_name('state.bin')
     try:
@@ -125,7 +165,7 @@ def aggregate_dataset(metadata_index_entry, output_dir):
     if (not dataset_folder_exists(output_dir, metadata_index_entry) or metadata_index_entry['accession_number'] not in aggregated_datasets):
         # print("Aggregating dataset %s/%s" % (index, len(metadata_index)))
         print("Downloading data and metadata for accession_number: %s" % metadata_index_entry['accession_number'])
-        metadata_path, data_path = create_dataset_folders(output_dir, metadata_index_entry)
+        metadata_path, data_path = create_dataset_folders(metadata_index_entry, output_dir)
         download_metadata(metadata_path, metadata_index_entry)
         print("metadata download complete")
 
@@ -135,11 +175,30 @@ def aggregate_dataset(metadata_index_entry, output_dir):
         aggregated_datasets.append(metadata_index_entry['accession_number'])
         save_state(aggregated_datasets)
 
+def check_dataset(metadata_index_entry, output_dir):
+    if (dataset_folder_exists(output_dir, metadata_index_entry)):
+        # dataset folder exists, so check the files
+        result = True
+
+        metadata_path, data_path = get_dataset_folder_paths(metadata_index_entry, output_dir)
+        
+        metadata_result = check_metadata(metadata_path, metadata_index_entry)
+        result *= metadata_result
+
+        dataset_url = generate_dataset_url(metadata_index_entry)
+        data_result = check_webdirectory_contents(data_path, dataset_url)
+        result *= data_result        
+        return bool(result)
+    else:
+        # dataset folder doesn't exist, must not have been downloaded
+        return False
+
 class DatasetAggregator(object):
     def __init__(self, output_dir):
         self.output_dir = output_dir
     def __call__(self, metadata_index_entry):
         return aggregate_dataset(metadata_index_entry, self.output_dir)
+    
 
 def main(output_dir, num_threads):
     print("Starting OCADS data aggregation process")
@@ -159,6 +218,21 @@ def main(output_dir, num_threads):
         pool.join()    
     return
 
+def check_aggregation(output_dir):
+    print("Fetching metadata index")
+    metadata_index = load_metadata_index(output_dir)
+    problematic_datasets = []
+    print("Starting check")
+    for metadata_index_entry in metadata_index:
+        aggregation_check_passed = check_dataset(metadata_index_entry, output_dir)
+        if not aggregation_check_passed:
+            problematic_datasets.append(metadata_index_entry)
+
+    if len(problematic_datasets) > 0:
+        print("\nProblematic datasets:")
+        for dataset in problematic_datasets:
+            print("\t- %s" % dataset['accession_number'])
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("OCADS_agg")
     parser.add_argument(
@@ -171,6 +245,11 @@ if __name__ == "__main__":
         help="The number of threads to be used in aggregating data", 
         type=int
     )
+    parser.add_argument(
+        "-c", "--check",
+        help="Check the local backup of the data to ensure that nothing was missed.",
+        action="store_true"
+    )
     args = parser.parse_args()
 
     output_dir = os.getcwd()
@@ -180,4 +259,8 @@ if __name__ == "__main__":
     num_threads = 1
     if (args.num_threads):
         num_threads = args.num_threads
-    main(output_dir, num_threads)
+
+    if (args.check):
+        check_aggregation(output_dir)
+    else:
+        main(output_dir, num_threads)
