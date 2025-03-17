@@ -6,9 +6,13 @@ import json
 import re
 import os
 from multiprocessing import Pool
+import time
+import random
+
 
 import requests
 from bs4 import BeautifulSoup
+from tqdm import tqdm
 
 metadata_index_url = "https://www.ncei.noaa.gov/data/oceans/ncei/ocads/ocads_metadata.json"
 data_url = "https://www.ncei.noaa.gov/data/oceans/ncei/ocads/data/"
@@ -223,8 +227,10 @@ def check_aggregation(output_dir):
     metadata_index = load_metadata_index(output_dir)
     problematic_datasets = []
     print("Starting check")
-    for metadata_index_entry in metadata_index:
+    for metadata_index_entry in tqdm(metadata_index):
         aggregation_check_passed = check_dataset(metadata_index_entry, output_dir)
+        # Wait a random amount of time, between 0 and 10 seconds so we don't make the web server angry
+        time.sleep(random.randrange(10))
         if not aggregation_check_passed:
             problematic_datasets.append(metadata_index_entry)
 
